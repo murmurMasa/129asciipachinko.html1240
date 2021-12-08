@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>パチンコ</title>
+<script>
+var canvas, context, canvasRect;    //カンバス
+var ball = new Array();             //玉
+var kugi = new Array();             //釘
+var tulip = new Array();            //チューリップ
+var g = 0.2;                        //重力
+var ballNum;                        //玉数
+var timer = null;                   //タイマー
+
+//ゲームオブジェクトクラス
+function GameObject(x, y, r, color, vx, vy) {   //GameObjectクラスを作成
+   this.x = x;              //位置
+   this.y = y;
+   this.r = r;              //半径
+   this.color = color;      //色
+   this.vx = vx;            //速度
+   this.vy = vy;
+   this.status = "alive";   //ステータス（alive/dead)
+}
+
+GameObject.prototype.update = function() {  //GameObjectクラスのupdate()メソッドを作成
+   //移動
+   this.vy += g;
+   this.x += this.vx;
+   this.y += this.vy;
+   //壁に衝突
+   if ((this.x - this.r < 0) || (this.x - this.r > 800)) this.vx *= -1; //玉の座標が左右上の壁を越えたら速度の値の正負を反転する
+   if (this.y - this.r < 0) this.vy *= -1;
+   if (this.y - this.r > 600) this.status = "dead";     //玉の座標が下の壁を越えたら玉のステータスをdeadにする
+   //描画
+   this.draw();
+}
+
+GameObject.prototype.draw = function() {    //GameObjectクラスのdraw()メソッドを作成
+   //描画
+   if (this.status == "alive") {
+       context.fillStyle = this.color;
+       context.beginPath();
+       context.arc(this.x, this.y, this.r, 0, 2*Math.PI);   //中心座標(x, y)、半径rの円を描く
+       context.fill();
+   }
+}
+
+GameObject.prototype.collide = function(target, targetType) {   //GameObjectクラスのcollide()メソッドを作成
+   //当たり判定
+   var dx = target.x - this.x;
+   var dy = target.y - this.y;
+   var d = Math.sqrt(Math.pow(dx, 2) + Math.pow(dy, 2));        //三平方の定理よりターゲットとの距離を求める
+   if ((d < target.r + this.r) && (target.status == "alive")) { //ターゲットと衝突した時
+       if ((targetType == "kugi") || (targetType == "ball")) {  //ターゲットが釘または玉の時
+          //釘
+          var targetAngle = Math.atan2(dy, dx);                    //ターゲットの方向
+          var vAngle = Math.atan2(this.vy, this.vx);               //玉の移動方向
+          var v = Math.sqrt(Math.pow(this.vx, 2)+Math.pow(this.vy, 2));    //玉の速度
+          vAngle = Math.PI - vAngle + targetAngle * 2;                     //跳ね返る方向
+          var e = 1;
+          if (targetType == "kugi") e = 0.7;                       //ターゲットが釘の時は速度を0.7倍に落とす
+          this.vx = Math.cos(vAngle) * v * e;
+          this.vy = Math.sin(vAngle) * v * e;
+          this.update();
+       } else {    //ターゲットがチューリップのとき
+          //チューリップ
+          this.status = "dead";
+          ballNum += 10;                                           //残り玉数を10増やす
+          document.getElementById("ballNum").innerText = ballNum;    
+       }
+   }
+}
+
+function init() {
+    //キャンバスの取得
+    canvas = document.getElementById("board");          //キャンバスのID
+    context = canvas.getContext("2d");
+    canvasRect = canvas.getBoundingClientRect();        //キャンバスの矩形情報を取得
+    //釘をセット
+    for (var y=100; y<600; y+=100) {                    //釘の座標
+        dx = 30 * ((y/100)%2);
+        for (var x=40+dx; x<800-dx; x+=60) {
+            kugi.push(new GameObject(x, y, 5, "#FF9900", 0, 0));    //オレンジ色に釘を作成し配列kugiに追加
+        }
+    }
+    //チューリップをセット
+    var pos = [[160, 300], [640, 300], [400, 500]];         //チューリップの座標（３箇所）
+    for (var i=0; i<pos.length; i++) {
+        tulip.push(new GameObject(pos[i][0], pos[i][1], 20, "#CC0000", 0, 0));  //濃い赤色のチューリップを作成し、配列tulipに追加
+        kugi.push(new GameObject(pos[i][0], pos[i][1]-60, 5, "#CC0000", 0, 0)); //チューリップの上の赤い釘を作成
+        kugi.push(new GameObject(pos[i][0]-20, pos[i][1]-40, 5, "#CC0000", 0, 0));
+        kugi.push(new GameObject(pos[i][0]+20, pos[i][1]-40, 5, "#CC0000", 0, 0));
+        kugi.push(new GameObject(pos[i][0]-10, pos[i][1]+30, 5, "#FF9900", 0, 0));  //チューリップの下の釘を作成
+        kugi.push(new GameObject(pos[i][0]+10, pos[i][1]+30, 5, "#FF9900", 0, 0));
+    }
+    //開始
+    startGame();
+}
+
+function startGame() {
+    //初期化
+    ballNum = 50;           //最初の玉の数
+    document.getElementById("ballNum").innerText = ballNum;
+    document.getElementById("message").innerText = "";
+    ball = [];
+    if (timer == null) timer = setInterval(update, 20); //20ミリ秒ごとにupdate()関数を実行
+}
+
+function update() {
+    //パチンコ台の描画
+    drawBoard();
+    //玉の移動、描画
+    for (var i=0; i<ball.length; i++) { //作成した玉の数
+       if (ball[i].status == "alive") {     //玉のステータスがaliveのとき
+          ball[i].update();
+          //玉と釘の衝突
+          for (var j = 0; j < kugi.length; j++) {   //作成した釘の数
+             ball[i].collide(kugi[j], "kugi");      //衝突処理
+          }
+          //玉と玉の衝突
+          for (var k=0; k<i; k++) {
+              ball[i].collide(ball[k], "ball");
+          }
+          //玉とチューリップの衝突
+          for (var l=0; l<tulip.length; l++) {  //作成したチューリップの数
+              ball[i].collide(tulip[l], "tulip");
+          }    
+    
+       } else {        //玉のステータスがdeadのとき
+          //削除
+          ball.splice(i, 1);  //玉を配列ballから削除
+          i--;
+       }    
+    }
+    //終了
+    if ((ballNum == 0) && (ball.length == 0)) {  //玉がなくなったとき
+       document.getElementById("message").innerText = "終了";    
+    }
+}
+
+function drawBoard() {
+    //パチンコ台の描画
+    context.clearRect(0, 0, canvas.width, canvas.height);   //キャンバスをクリア
+    //釘の描画
+    for (var i=0; i<kugi.length; i++) {
+        kugi[i].draw();
+    }
+    //チューリップの描画
+    for (var j=0; j<tulip.length; j++) {
+        tulip[j].draw();
+    }
+}
+
+function shot(event) {
+    //玉の発射
+    if (ballNum > 0) {  //残りの玉があるなら
+       var x = 200 + (event.clientX - canvasRect.left)/2;   //マウスの位置によって玉が出る位置を変える
+       var y = (event.clientY - canvasRect.top)/100;
+       var vx = Math.random() * y - 5;                      //玉の初速
+       ball.push(new GameObject(x, 10, 10, "#6699CC", vx, 0));  //青色の玉を作成し、配列ballに追加
+       ballNum--;
+       document.getElementById("ballNum").innerText = ballNum;    
+    }
+}
+</script>
+<style>
+canvas {
+    background-color: #FFFFCC;
+    border: solid 2px #000000;
+}
+#message {color: #FF0000;}
+</style>
+</head>
+<body onload="init()">
+<p>パチンコ</p>
+<input type="button" value="はじめから" onclick="startGame()">
+玉数：<span id="ballNum"></span> <span id="message"></span>
+<hr>
+<canvas id="board" width="800" height="600" onmousedown="shot(event)"></canvas>
+</body>
+</html>
